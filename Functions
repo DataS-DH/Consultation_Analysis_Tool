@@ -1,0 +1,459 @@
+# import libraries
+if (!require(shiny)){
+  install.packages("shiny")
+  library(shiny)
+}
+
+if (!require(DT)){
+  install.packages("DT")
+  library(DT)
+}
+
+if (!require(dplyr)){
+  install.packages("dplyr")
+  library(dplyr)
+}
+
+if (!require(ggplot2)){
+  install.packages("ggplot2")
+  library(ggplot2)
+}
+
+if (!require(scales)){
+  install.packages("scales")
+  library(scales)
+}
+
+if (!require(tm)){
+  install.packages("tm")
+  library(tm)
+}
+
+if (!require(wordcloud)){
+  install.packages("wordcloud")
+  library(wordcloud)
+}
+
+if (!require(topicmodels)){
+  install.packages("topicmodels")
+  library(topicmodels)
+}
+
+if (!require(tidytext)){
+  install.packages("tidytext")
+  library(tidytext)
+}
+
+if (!require(fpc)){
+  install.packages("fpc")
+  library(fpc)
+}
+
+
+if (!require(cluster)){
+  install.packages("cluster")
+  library(cluster)
+}
+
+
+
+###################################################################################################
+######################################### Version Control #########################################
+#### v0.01 - function to determine final ethnicity #### 
+#### v0.02 - updated to be more general cleaning function, added in removal of partial results #### 
+#### v0.03 - function to cluster responses into 4 groups, need to add option to adjust ####
+#### v0.04 - added wordcloud and K means clustering functions
+#### v0.05 - added sampling tool function
+#### Input : dataframe, output: data table ####
+###################################################################################################
+
+#### Function list ####
+#### 1 - Function to process demographic columns assuming standard format ####
+#### 2 - Function to return pie chart of ethnicities based on the cleaned data column created in first function ####
+#### 3 - LDA clustering of responses, only works for one questions hardcoded atm ####
+#### 4 - Wordcloud of responses, only works for one quesiton hardcoded atm ####
+#### 5 - K-means clustering of responses, only works for one questions hardcoded atm - WARNING v computationally heavy ####
+#### 6 - Sampling tool, allows users to geneerate a randonm sample statified over age and ethnicity
+
+
+###################################################################################################
+######################################### Function #1 #############################################
+#### v0.01 - function to determine final ethnicity #### 
+#### Input: data frame, output data frame with two new columns
+###################################################################################################
+
+#Remove after functions is tested and working
+#setwd('C:/R Work/Consultation Tool/Text Clustering trial')
+#Dem_test_dataset = read.csv('CYPRQ1.csv')
+
+Cleaning_Fun = function(x){
+  
+  #Remove partial responses
+  x <- filter(x, Type == "Complete")
+  
+  #Determine correct ethnicity first
+  #dplyr's mutate function faster than nested ifelse and also more readable 
+  ELSE <- TRUE
+  x <- x %>% mutate(.,Ethnicity = with(.,case_when(
+    (White != "" & Black...African...Caribbean...Black.British != "") ~ "Mixed",
+    (White != "" & Asian.Asian.British != "") ~ "Mixed",
+    (White != "" & Other.ethnic.group != "") ~ "Mixed",
+    (Mixed.multiple.ethnic.groups != "") ~ "Mixed",
+    (Black...African...Caribbean...Black.British != "" & Asian.Asian.British != "") ~ "Mixed",
+    (Black...African...Caribbean...Black.British != "" & Other.ethnic.group != "") ~ "Mixed",
+    (Asian.Asian.British != "" & Other.ethnic.group != "") ~ "Mixed",
+    #Singular conditions come after as mutate function won't overwrite
+    (White != "") ~ "White",
+    (Black...African...Caribbean...Black.British != "") ~ "Black",
+    (Asian.Asian.British != "") ~ "Asian",
+    (Other.ethnic.group != "") ~ "Other",
+    (Prefer.not.to.say4 != "") ~ "Prefer not to say",
+    #finally if not match then other
+    ELSE ~ "Other"
+  )))
+  
+  #similarly clean the gender column
+  ELSE <- TRUE
+  x <- x %>% mutate(.,Gender = with(.,case_when(
+    (What.is.your.gender. == "Male") ~ "Male",
+    (What.is.your.gender. == "Female") ~ "Female",
+    (What.is.your.gender. == "prefer not to say") ~ "Prefer not to say",
+    (What.is.your.gender. == "") ~ "Other",
+    (grepl("if", What.is.your.gender., ignore.case = TRUE)) ~ "Female",
+    #finally if not match then other
+    ELSE ~ "Other"
+  )))
+  
+  #similarly clean the age column
+  ELSE <- TRUE
+  x <- x %>% mutate(.,Age = with(.,case_when(
+    (What.is.your.age. == "Up to 11") ~ "Up to 11",
+    (What.is.your.age. == "Dec-15") ~ "12-15",
+    (What.is.your.age. == "16-19") ~ "16-19",
+    (What.is.your.age. == "20-24") ~ "20-24",    
+    (What.is.your.age. == "25-29") ~ "25-29",
+    (What.is.your.age. == "30-39") ~ "30-39",
+    (What.is.your.age. == "40-49") ~ "40-49",
+    (What.is.your.age. == "50-59") ~ "50-59",
+    (What.is.your.age. == "60-69") ~ "60-69",
+    (What.is.your.age. == "70-79") ~ "70-79",
+    (What.is.your.age. == "Above 80") ~ "Above 80",
+    #finally if not match then other
+    ELSE ~ "Other"
+  )))
+  
+  return(x)
+}
+
+#test_output <- Cleaning_Fun(Dem_test_dataset)
+
+###########################
+#### Function #1 - End ####
+###########################
+
+###################################################################################################
+######################################### Function #2 #############################################
+#### v0.01 - Function to return pie chart of ethnicities based on the cleaned data column #### 
+#### Input : dataframe, output: plot ####
+###################################################################################################
+
+#Function is dependent on Cleaning Function!
+
+Ethnicity_bp = function(x){
+  #Ensure data is clean
+  x <- Cleaning_Fun(x)
+  bp1_Table <- as.data.frame(table(x$Ethnicity))
+  #sort
+  bp1_Table <- bp1_Table[order(bp1_Table$Freq),] 
+  # Barplot 1
+  bp1<-ggplot(bp1_Table, aes(x=reorder(Var1, -Freq), y=Freq, fill=Var1)) +
+    geom_bar(stat="identity")+
+    scale_fill_manual("Ethnicity", values = c("White" = "slateblue4", "Other" = "slateblue3","Mixed" = "slateblue2","Asian" = "slateblue1", "Prefer not to say" = "slateblue", "Black" = "plum2")) +
+    labs(x = "Ethnicity") +
+    labs(y = "Number of Respondents") +
+    ggtitle("Number of consultation respondents by Ethnicity") +
+    theme_minimal()
+  
+  return(bp1)
+}
+
+#!~!~!~!~!~!~!~!~!~!~!~# Working but needs to automatically scale colours according to order #!~!~!~!~!~!~!~!~!~!~!~#
+
+
+
+
+###########################
+#### Function #2 - End ####
+###########################
+
+###################################################################################################
+######################################### Function #3 #############################################
+#### v0.01 - function to cluster responses into 4 groups, need to add option to adjust #### 
+#### Input : dataframe, output: plot ####
+###################################################################################################
+
+Clustering_LDA = function(x){
+#create corpus object
+#x <- Dem_test_dataset
+#x <- Cleaning_Fun(x)
+#x <- as.data.frame(x$Question_1)
+#x <- as.data.frame(x[!apply(is.na(x) | x == "", 1, all),])
+text_corpus <- VCorpus(VectorSource(x$Question_1)) # leave it as question1 for the moment, will have to make it a dynamic object on server side
+
+#clean the text before we try and cluster it
+
+#to lower case
+text_corpus_clean <- tm_map(text_corpus,content_transformer(tolower))
+#stem
+text_corpus_clean <- tm_map(text_corpus_clean, stemDocument)
+#remove numbers
+text_corpus_clean <- tm_map(text_corpus_clean, removeNumbers)
+#remove stopwords
+text_corpus_clean <- tm_map(text_corpus_clean,removeWords, stopwords())
+#remove punctuation
+text_corpus_clean <- tm_map(text_corpus_clean, removePunctuation)
+#remove excess whitespace
+text_corpus_clean <- tm_map(text_corpus_clean, stripWhitespace)
+
+#let's have a look at words which appear more than 10 times in a word cloud
+
+#wordcloud(text_corpus_clean, min.freq = 10, random.order = FALSE,
+#          colors=brewer.pal(8, "Dark2"))
+
+#let's build a model
+
+text_dtm <- DocumentTermMatrix(text_corpus_clean)
+
+#findFreqTerms(text_dtm, lowfreq = 20)
+
+#need two lines below otherwise error means that sparse matrix contain a row without entries(words)
+#https://stackoverflow.com/questions/13944252/remove-empty-documents-from-documenttermmatrix-in-r-topicmodels
+
+rowTotals <- apply(text_dtm , 1, sum) #Find the sum of words in each Document
+text_dtm.new   <- text_dtm[rowTotals> 0, ]           #remove all docs without words
+
+#2 clusters
+text_lda <- LDA(text_dtm.new, k = 4, method = "VEM", control = NULL)
+
+#lets see what words appear most in each cluster
+
+text_topics <- tidy(text_lda, matrix = "beta")
+
+#for info on pipe operators
+#https://stackoverflow.com/questions/30248583/error-could-not-find-function/30248632
+text_top_terms <- text_topics %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+text_top_terms <- text_top_terms %>% mutate(term = reorder(term, beta))
+  
+  Cluster_plot <- ggplot(text_top_terms, aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip()
+
+  return(Cluster_plot)
+
+}
+
+
+###########################
+#### Function #3 - End ####
+###########################
+
+###################################################################################################
+######################################### Function #4 #############################################
+#### v0.01 - produce word cloud of responses, need to make quesiton column dynamic #### 
+#### Input : dataframe, output: plot ####
+###################################################################################################
+
+Word_Cloud = function(x){
+
+text_corpus <- VCorpus(VectorSource(x$Question_1)) # leave it as question1 for the moment, will have to make it a dynamic object on server side
+
+#clean the text before we try and cluster it
+
+#to lower case
+text_corpus_clean <- tm_map(text_corpus,content_transformer(tolower))
+#stem
+text_corpus_clean <- tm_map(text_corpus_clean, stemDocument)
+#remove numbers
+text_corpus_clean <- tm_map(text_corpus_clean, removeNumbers)
+#remove stopwords
+text_corpus_clean <- tm_map(text_corpus_clean,removeWords, stopwords())
+#remove punctuation
+text_corpus_clean <- tm_map(text_corpus_clean, removePunctuation)
+#remove excess whitespace
+text_corpus_clean <- tm_map(text_corpus_clean, stripWhitespace)
+
+
+#let's have a look at words which appear more than 10 times in a word cloud
+
+wc <- wordcloud(text_corpus_clean, min.freq = 10, random.order = FALSE,
+          colors=brewer.pal(8, "Dark2"))
+
+return(wc)
+}
+
+###########################
+#### Function #4 - End ####
+###########################
+
+###################################################################################################
+######################################### Function #5 #############################################
+#### v0.01 - k-means clustering #### 
+###################################################################################################
+
+#https://rpubs.com/saqib/DocumentClustering
+#http://ww2.amstat.org/sections/srms/Proceedings/y2014/Files/311463_87563.pdf <- these are hierachical clustering methods
+#https://rstudio-pubs-static.s3.amazonaws.com/265713_cbef910aee7642dc8b62996e38d2825d.html <- using this one
+
+#We copy code from the LDA clustering method above
+
+Clustering_Kmeans = function(x){
+  ##### ! Warning ! #####
+  # K means clustering is a computationally heavy process. This is not suitable for our purposes at the current time
+  # the code below works on a dataset of reduced size from our test dataset.
+  
+  #test run
+  
+  #setwd('C:/R Work/Consultation Tool/Text Clustering trial')
+  #Dem_test_dataset = read.csv('CYPRQ1.csv')
+  #x <- Dem_test_dataset
+  #x <- as.data.frame(as.factor(x[1:20,])) #remove some data as RAM limitaiton i cant process it all
+  #x <- as.data.frame(x$Question_1)
+  #x <- as.data.frame(x[!apply(is.na(x) | x == "", 1, all),])
+  
+  #create corpus object
+  text_corpus <- VCorpus(VectorSource(x)) # leave it as question1 for the moment, will have to make it a dynamic object on server side
+  #clean the text before we try and cluster it
+  
+  #to lower case
+  text_corpus_clean <- tm_map(text_corpus,content_transformer(tolower))
+  #stem
+  text_corpus_clean <- tm_map(text_corpus_clean, stemDocument)
+  #remove numbers
+  text_corpus_clean <- tm_map(text_corpus_clean, removeNumbers)
+  #remove stopwords
+  text_corpus_clean <- tm_map(text_corpus_clean,removeWords, stopwords())
+  #remove punctuation
+  text_corpus_clean <- tm_map(text_corpus_clean, removePunctuation)
+  #remove excess whitespace
+  text_corpus_clean <- tm_map(text_corpus_clean, stripWhitespace)
+  #plain text doc
+  text_corpus_clean <- tm_map(text_corpus_clean, PlainTextDocument)
+  
+  text_dtm <- DocumentTermMatrix(text_corpus_clean)
+  
+  #We diverge here and try k-means clustering
+  
+  #we cluster by term similarity, we remove the uninteresting word/ infrequent words.
+  text_dtmss <- removeSparseTerms(text_dtm, 0.15) # This makes a matrix that is only 15% empty space, maximum.   
+  #text_dtmss <- as.matrix(text_dtmss)
+  euc_dis <- dist(t(text_dtmss), method = "euclidian")
+  kfit <- kmeans(euc_dis,7) #Error: cannot allocate vector of size 204.7 Mb need more RAM / 64 bit machine
+  KMeans_CLuster <- clusplot(as.matrix(euc_dis), kfit$cluster, colour =T, shade=T, labels=2, lines=0)
+  
+  return(KMeans_CLuster)
+
+}
+###########################
+#### Function #5 - End ####
+###########################
+
+###################################################################################################
+######################################### Function #6 #############################################
+#### v0.01 - function to return random stratified sample of respondents #### 
+#### Input : dataframe, output: dataframe ####
+###################################################################################################
+
+# Inspiration from https://gist.github.com/mrdwab/6424112
+
+  #data used to test
+  #setwd('C:/R Work/Consultation Tool')
+  #Dem_test_dataset = read.csv('Childrenandyoungpeopleresponses.csv')
+  #x <- Dem_test_dataset
+  #x <- Cleaning_Fun(Dem_test_dataset)
+
+Random_Strat_Sample <- function(x){
+  
+  #run through cleaning function
+  x <- Cleaning_Fun(x)
+  #Create random id column
+  x$RandomID <- sample(10000, size = nrow(x), replace = TRUE)
+  
+  #create function to create freq tables - need to add adjustable sample size - can potentially put this in a subfunction folder as a few functions
+  #could use this
+  Freq_Sample_Table <- function(x, Column_Name, Sample_Size_Type = "small"){ # (Default) Small = 45, Medium = 90, Large = 180
+    
+    x <- Cleaning_Fun(x) # most likely that dataframe will be cleaned beforehand, can remove for speed if needed
+    
+    #Case statement to return sample size selection
+    Sample_Size_Type <- case_when(
+      (Sample_Size_Type == "Small") ~ 45,
+      (Sample_Size_Type == "Medium") ~ 90,
+      (Sample_Size_Type == "Large") ~ 180,
+      TRUE ~ 45 # default when misspelled
+    )
+    
+    #create frequency table of results
+    x <- data.frame(table(x[, Column_Name]))
+    
+    #add percentages
+    x <- x %>% mutate(Proportion = Freq/sum(Freq))
+    
+    #add additional column which multiplies proportion by a number this will be 45 but adaptable
+    x <- x %>% mutate(Sample = round(Proportion * Sample_Size_Type,0))
+    
+    #we want each  group to have a minimum size of 2, we enact this
+    x$Sample[x$Sample < 2] <- 2
+    
+    #name output - dont actually need to do this dynamically
+    #assign(paste(Column_Name, Freq_Table, sep = '_'), x)
+    Table.Output <- x
+    
+    return(Table.Output)
+  }
+  
+  #We now use this function to get our outputs for each demographic variables
+  
+  Tab_Ethn <- Freq_Sample_Table(x, "Ethnicity")
+  Tab_Gend <- Freq_Sample_Table(x, "Gender")
+  Tab_Age <- Freq_Sample_Table(x, "Age")
+  
+  #function to loop through each unique demographic types and obtain 
+  
+  Sample_Output <- function(x,Column_Name,Freq_Tab){
+    
+    #Create Empty data frame to 'fill' with samples
+    Sample <- data.frame()
+    #list will just be unique values of Var1 created in function above
+    List <- unique(Freq_Tab$Var1)
+    
+      for (i in List){
+        #split data frame where it equals the item in the list
+        Eth_Split_Temp <- split(x,x[,Column_Name]==i)$`TRUE`
+        Eth_Split_Temp <- Eth_Split_Temp[order(Eth_Split_Temp$RandomID),] 
+        # Now need to subset by the resired number of rows. Need to obtain the number from the Freq_Tab
+        NSample_Temp <- Freq_Tab$Sample[Freq_Tab$Var1 == i]
+        Eth_Split_Temp <- head(Eth_Split_Temp,NSample_Temp)
+        #'top up' exisitng dataframe with this specific sample
+        Sample <- rbind(Sample,Eth_Split_Temp)
+      }
+      return(Sample)
+    }
+ 
+  #Use this function on all demographic types and 'layer up' final output
+  Sample <- Sample_Output(x,"Ethnicity", Tab_Ethn)
+  Sample <- rbind(Sample,Sample_Output(x,"Gender", Tab_Gend))
+  Sample <- rbind(Sample,Sample_Output(x,"Age", Tab_Age))
+ 
+  return(Sample)
+  }
+  
+
+###########################
+#### Function #6 - End ####
+###########################
