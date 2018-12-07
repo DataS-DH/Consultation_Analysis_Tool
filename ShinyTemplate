@@ -1,0 +1,155 @@
+#Helpful SO pages
+#https://stackoverflow.com/questions/46010595/shiny-how-to-dynamically-select-columns-of-imported-dataset-for-further-analysis
+#https://stackoverflow.com/questions/45449361/uploading-data-to-shiny-for-analyses
+#https://shiny.rstudio.com/articles/tabsets.html - tabsets
+
+
+
+# import libraries
+if (!require(shiny)){
+  install.packages("shiny")
+  library(shiny)
+}
+
+if (!require(DT)){
+  install.packages("DT")
+  library(DT)
+}
+
+if (!require(dplyr)){
+  install.packages("dplyr")
+  library(dplyr)
+}
+
+##################
+# User Interface #
+##################
+
+#generic line initiating the UI
+ui <- fluidPage(
+  
+  # Application title
+  titlePanel("Consultation Tool v0.03"),
+  
+  # Sidebar with a slider input for number of bins 
+  sidebarLayout(
+    sidebarPanel(
+      fileInput("dataset", "Choose CSV File",
+                multiple = TRUE,
+                accept = c("text/csv",
+                           "text/comma-separated-values,text/plain",
+                           ".csv")),
+      helpText(em("Note:Select all the inputs and click on button as given below to exectute the app")),
+      checkboxInput("header", "Header", TRUE),
+      radioButtons("sep", "Separator",
+                   choices = c(Comma = ",",
+                               Semicolon = ";",
+                               Tab = "\t"),
+                   selected = ","),
+      selectInput("select", "Select columns to display", c('col1', 'col2'), multiple = TRUE),
+      actionButton("update", "Update Data set", class = "btn-primary",style='padding:4px; font-size:120%')
+    ),
+    mainPanel(
+      
+      #output: tabset with data table and demographic plot
+      #tabPanel(
+       # h2('Responses'),
+        #tableOutput("mytable")
+      #  DT::dataTableOutput("mytable"))
+      
+      tabsetPanel(type = "tabs",
+                  tabPanel(h2("Responses"), DT::dataTableOutput('out.mytable'),
+                           fluidRow(downloadButton('out.mytable', "Download data"))),
+                  tabPanel(h2("Plot"), plotOutput('out.bp_1')),
+                  tabPanel(h2("WordCloud"), plotOutput('out.WordCloud' )), #, width = "150%"
+                  tabPanel(h2("Clustering"), plotOutput('out.Cluster' )),
+                  tabPanel(h2("Random Stratified Sample"), DT::dataTableOutput('out.Sample'), 
+                           fluidRow(downloadButton('SampleDownload', "Download sample data"))) # in a tabitem)
+    )
+  )
+)
+)
+
+#Close the UI definition
+
+
+##########
+# SERVER #
+##########
+
+#this need to go in server.R code if ever split out
+options(shiny.maxRequestSize=30*1024^2)
+
+#Make functions available
+source("C:/R Work/Consultation Tool/Functions/Functions v0.06.R")
+
+#generic line initiating the SERVER 
+
+server <- function(session, input, output) {
+  
+  data <- reactive({
+    req(input$dataset)
+    Cleaning_Fun(read.csv(input$dataset$datapath, header = input$header,sep = input$sep))
+  })
+  
+  filtereddata <- eventReactive({
+    input$update
+    data()
+  },  {
+    req(data())
+    if(is.null(input$select) || input$select == "")
+      data() else 
+        data()[, colnames(data()) %in% input$select]
+  })
+  
+  observeEvent(data(), {
+    updateSelectInput(session, "select", choices=colnames(data()))
+  })
+  
+  output$out.mytable  <- renderDataTable(filtereddata())
+ # Ethnicity_Fun
+#  output$mytable <- DT::renderDataTable(DT::datatable(Ethnicity_Fun(filtereddata())))
+  #plot
+  output$out.bp_1 <- renderPlot({Ethnicity_bp(filtereddata())
+    
+  })
+  #wordcloud
+  output$out.WordCloud <- renderPlot({Word_Cloud(filtereddata())
+  
+  })
+  
+  output$out.Cluster <- renderPlot({Clustering_LDA(filtereddata())
+    
+  })
+  #Stratified sample table
+  #output$out.Sample <- renderDataTable({Random_Strat_Sample(filtereddata())
+  #output$out.Sample <- DT::renderDataTable(DT::datatable{Random_Strat_Sample(filtereddata())) 
+  #})
+
+  output$out.Sample <- DT::renderDataTable(DT::datatable({Random_Strat_Sample(filtereddata())
+    
+  }))
+
+ #output$download_sample = downloadHandler('Sample.csv', content =    function(file) {
+ #  s = input$sampledl  
+ #  write.table(mydata[s, ], file  ,sep=";",row.names = F)
+ #})
+  
+  output$SampleDownload <- downloadHandler(
+    filename = function() {
+      paste('Sample_data-', Sys.Date(), '.csv', sep = '')
+    },
+    content = function(file){
+      write.csv(filtereddata()[input[["SampleData_rows_all"]], ],file)
+    }
+  )
+  
+} 
+
+
+##############
+# Launch App #
+##############
+
+#generic line that launches the app
+shinyApp(ui = ui, server = server)
